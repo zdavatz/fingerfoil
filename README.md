@@ -60,7 +60,7 @@ blender -b -P fingerfoil.py -- -size 0.5 \
 
 ## Output
 
-Five STL files are written to `~/Desktop/pumpfoil_v6/`:
+Five STL files are written to `~/Desktop/fingerfoil/`:
 
 | File | Description |
 |------|-------------|

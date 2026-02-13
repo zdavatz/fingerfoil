@@ -21,7 +21,7 @@ import os
 #   /Applications/Blender.app/Contents/MacOS/Blender -b -P fingerfoil.py -- -size 1.0
 #   /Applications/Blender.app/Contents/MacOS/Blender -b -P fingerfoil.py -- -size 0.5 -board ~/my_board.stl
 
-export_dir = os.path.expanduser("~/Desktop/pumpfoil_v6")
+export_dir = os.path.expanduser("~/Desktop/fingerfoil")
 os.makedirs(export_dir, exist_ok=True)
 
 SCALE = 0.20
