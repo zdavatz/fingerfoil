@@ -81,7 +81,7 @@ FW_SPAN = 200.0*_P;  FW_ROOT_CHORD = 25.2*_P;  FW_TIP_CHORD = 12.6*_P
 FW_SWEEP = 10.0*_P;  FW_DIHEDRAL = 3.0*_P;     FW_NACA = '2412'
 FW_TWIST = -2.0   # degrees — not scaled (it's an angle)
 
-STAB_SPAN = 90.0*_P;  STAB_ROOT_CHORD = 12.6*_P;  STAB_TIP_CHORD = 7.0*_P
+STAB_SPAN = 45.0*_P;  STAB_ROOT_CHORD = 12.6*_P;  STAB_TIP_CHORD = 7.0*_P
 STAB_SWEEP = 2.5*_P;  STAB_NACA = '0024'
 
 SLOT_CLEARANCE = 0.3*_P;  SCREW_DIAM = 1.6*_P;  FOIL_PTS = 80
@@ -1116,8 +1116,8 @@ print(f"""
   1_board.stl        {BOARD_LENGTH:.0f} x {BOARD_WIDTH:.0f} x {BOARD_THICK:.1f}mm {'('+BOARD_FILE+')' if BOARD_FILE else '(generated)'}
   2_mast.stl         {MAST_HEIGHT:.0f}mm tall, {MAST_CHORD:.0f}mm chord, NACA {MAST_NACA} {'('+MAST_FILE+')' if MAST_FILE else '(generated)'}
   3_fuselage.stl     {FUSE_LENGTH:.1f}mm long, {4.76*2*_P:.1f}mm wide {'('+FUSE_FILE+')' if FUSE_FILE else '(generated)'}
-  4_frontwing.stl    {FW_SPAN:.0f}mm span, {FW_ROOT_CHORD:.1f}mm root chord, NACA {FW_NACA}
-  5_stabilizer.stl   {STAB_SPAN:.0f}mm span, {STAB_ROOT_CHORD:.1f}mm root chord, NACA {STAB_NACA}
+  4_frontwing.stl    {FW_SPAN:.0f}mm span, {FW_ROOT_CHORD:.1f}mm root chord, {FW_ROOT_CHORD*0.12:.1f}mm thick, NACA {FW_NACA}
+  5_stabilizer.stl   {STAB_SPAN:.0f}mm span, {STAB_ROOT_CHORD:.1f}mm root chord, {STAB_ROOT_CHORD*0.24:.1f}mm thick, NACA {STAB_NACA}
 
   Wing smoothness:
     • Cubic B-spline spanwise interpolation (C2 continuous)
