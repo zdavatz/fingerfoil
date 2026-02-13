@@ -719,15 +719,14 @@ def make_placeholder_mast(name):
     profile = naca_4digit(MAST_NACA, FOIL_PTS)
     n_prof = len(profile)
 
-    # ── Mast foot base plate dimensions ──
-    plate_size = MAST_CHORD * 2.0  # square plate
-    plate_z = 2.0 * _P             # thinner plate for less weight
+    # Mastfoot flares from NACA to a rounded-square mounting surface
+    # Size: just enough to hold 4 screw holes outside the mast profile
+    foot_size = MAST_CHORD * 1.2  # only 20% wider than chord (was 2x)
 
-    # ── Build mast body + steep fairing as one continuous loft ──
-    # Fairing starts at 97% — very steep/short transition to minimize volume
-    n_h = 30          # mast body stations
-    n_fair = 6        # fewer fairing stations (steep)
-    fair_start = 0.97 # fairing begins at 97% of mast height (very short)
+    # Build mast body + steep fairing as one continuous loft
+    n_h = 30
+    n_fair = 6
+    fair_start = 0.97  # steep: fairing in top 3% of mast
 
     all_verts = []
     all_faces = []
@@ -745,20 +744,19 @@ def make_placeholder_mast(name):
             t = fair_start + ft * (1.0 - fair_start)
             z = t * MAST_HEIGHT
             c = MAST_CHORD * (1 - 0.1 * t)
-            # Linear blend for steep transition
-            blend = ft
+            blend = ft  # linear for steep transition
 
         for pi in range(n_prof):
             px, py = profile[pi]
             mx = (px - 0.5) * c
             my = py * c
 
-            # Plate outline: superellipse for rounded square
+            # Foot outline: superellipse (rounded square)
             angle = 2 * math.pi * pi / n_prof
             ca = math.cos(angle)
             sa = math.sin(angle)
             n_exp = 4.0
-            r_sq = plate_size / 2 * 0.92
+            r_sq = foot_size / 2
             denom = (abs(ca)**n_exp + abs(sa)**n_exp) ** (1.0 / n_exp)
             ex = r_sq * ca / denom if denom > 0.001 else 0
             ey = r_sq * sa / denom if denom > 0.001 else 0
@@ -767,7 +765,7 @@ def make_placeholder_mast(name):
             y_f = my + blend * (ey - my)
             all_verts.append((x_f, y_f, z))
 
-    # Connect rings with quads
+    # Connect rings
     for j in range(total_rings - 1):
         for i in range(n_prof):
             i_next = (i + 1) % n_prof
@@ -777,9 +775,8 @@ def make_placeholder_mast(name):
             v3 = (j + 1) * n_prof + i
             all_faces.append((v0, v1, v2, v3))
 
-    # Bottom cap (fuselage end)
+    # Caps
     all_faces.append(tuple(reversed(range(n_prof))))
-    # Top cap (plate underside)
     last_start = (total_rings - 1) * n_prof
     all_faces.append(tuple(range(last_start, last_start + n_prof)))
 
@@ -793,59 +790,11 @@ def make_placeholder_mast(name):
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # ── Plate ──
-    bpy.ops.mesh.primitive_cube_add(size=1)
-    plate = bpy.context.active_object
-    plate.name = "MastPlate"
-    plate.scale = (plate_size/2, plate_size/2, plate_z/2)
-    plate.location = (0, 0, MAST_HEIGHT + plate_z/2)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-
-    # Weight reduction pockets on plate underside
-    screw_inset = plate_size * 0.30
-    pocket_depth = plate_z * 0.60
-    pocket_z_pos = MAST_HEIGHT + pocket_depth / 2
-    mast_clearance = MAST_CHORD * 0.55
-    screw_boss_r = SCREW_DIAM * 2.5
-    pocket_cx = screw_inset / 2
-    pocket_cy = screw_inset / 2
-    pocket_r = max(screw_inset - mast_clearance/2 - screw_boss_r - plate_size*0.06, plate_size * 0.06)
-
-    for sign_x, sign_y in [(-1,-1), (-1,1), (1,-1), (1,1)]:
-        bpy.ops.mesh.primitive_cylinder_add(
-            radius=pocket_r / 2, depth=pocket_depth, vertices=24,
-            location=(sign_x * pocket_cx, sign_y * pocket_cy, pocket_z_pos))
-        pkt = bpy.context.active_object
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-        bpy.context.view_layer.objects.active = plate
-        plate.select_set(True)
-        mod = plate.modifiers.new("Pocket", type='BOOLEAN')
-        mod.object = pkt; mod.operation = 'DIFFERENCE'
-        bpy.ops.object.modifier_apply(modifier=mod.name)
-        bpy.data.objects.remove(pkt, do_unlink=True)
-
-    # Round plate corners
-    bpy.context.view_layer.objects.active = plate
-    plate.select_set(True)
-    bev = plate.modifiers.new("Bev", type='BEVEL')
-    bev.width = plate_size * 0.12
-    bev.segments = 4
-    bev.limit_method = 'ANGLE'
-    bev.angle_limit = math.radians(60)
-    bpy.ops.object.modifier_apply(modifier=bev.name)
-
-    # Join mast body + plate into one object
-    bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
-    plate.select_set(True)
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.join()
-
-    # Drill 4 screw holes AFTER joining — goes through plate AND mast body
-    screw_z = MAST_HEIGHT + plate_z / 2
+    # 4 screw holes through the mastfoot top
+    screw_inset = foot_size * 0.30
     for sx, sy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
         bpy.ops.mesh.primitive_cylinder_add(
-            radius=SCREW_DIAM / 2, depth=MAST_HEIGHT * 0.15 + plate_z,
+            radius=SCREW_DIAM / 2, depth=MAST_HEIGHT * 0.10,
             vertices=24,
             location=(sx * screw_inset, sy * screw_inset, MAST_HEIGHT))
         cyl = bpy.context.active_object
@@ -1114,34 +1063,11 @@ clear_scene()
 board = import_and_scale_mesh(BOARD_FILE, SCALE, "Board") if BOARD_FILE else None
 if not board: board = make_placeholder_board("Board")
 
-# Mast foot plate recess on the bottom of the board
-# Mast at 80% from nose = +30% from center
-mast_board_x = BOARD_LENGTH * 0.30
-plate_x = MAST_CHORD * 2.0
-plate_y = MAST_CHORD * 2.0  # square plate
-plate_z = 2.0 * _P  # matches mast plate thickness
-
-# Cutter must extend well below board bottom and into interior
-recess_depth = plate_z + BOARD_THICK * 0.3  # plate depth + extra to cut through bottom skin
-bpy.ops.mesh.primitive_cube_add(size=1)
-recess = bpy.context.active_object
-recess.scale = (plate_x/2 + SLOT_CLEARANCE, plate_y/2 + SLOT_CLEARANCE, recess_depth/2)
-# Position so the TOP face of the cutter is plate_z above the board bottom
-recess.location = (mast_board_x, 0, -BOARD_THICK/2 + recess_depth/2)
-bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-bev = recess.modifiers.new("Bev", type='BEVEL')
-bev.width = plate_x * 0.12
-bev.segments = 4
-bev.limit_method = 'ANGLE'; bev.angle_limit = math.radians(60)
-bpy.context.view_layer.objects.active = recess
-bpy.ops.object.modifier_apply(modifier=bev.name)
-bpy.context.view_layer.objects.active = board; board.select_set(True)
-bm = board.modifiers.new("Recess", type='BOOLEAN'); bm.object = recess; bm.operation = 'DIFFERENCE'
-bpy.ops.object.modifier_apply(modifier=bm.name)
-bpy.data.objects.remove(recess, do_unlink=True)
-
-# 4 screw holes matching the mast foot plate corners
-screw_inset = plate_x * 0.30
+# Mast foot: flat plate sits on board bottom, secured by 4 screws
+mast_board_x = BOARD_LENGTH * 0.30  # 80% from nose
+# 4 screw holes matching the mast foot
+foot_size = MAST_CHORD * 1.2
+screw_inset = foot_size * 0.30
 add_screw_holes(board,
     [(mast_board_x - screw_inset, -screw_inset, 0),
      (mast_board_x - screw_inset,  screw_inset, 0),
