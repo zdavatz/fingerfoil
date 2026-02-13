@@ -69,7 +69,7 @@ if FUSE_FILE:  print(f"  Fuse file:   {FUSE_FILE}")
 
 # Base dimensions (mm) — these get multiplied by PIECE_SCALE
 _P = PIECE_SCALE
-BOARD_LENGTH = 190.0*_P;  BOARD_WIDTH = 66.0*_P;  BOARD_THICK = 15.4*_P
+BOARD_LENGTH = 190.0*_P;  BOARD_WIDTH = 66.0*_P;  BOARD_THICK = 10.2*_P
 MAST_HEIGHT  = 170.0*_P;  MAST_CHORD  = 24.0*_P;  MAST_NACA = '0013'
 FUSE_LENGTH  = 123.0*_P
 
@@ -585,58 +585,123 @@ def add_screw_holes(obj, positions, diameter, depth, axis='x'):
 def make_placeholder_board(name):
     print("  Placeholder board...")
     bm = bmesh.new()
-    n_x, n_y = 50, 24
-    half_w = BOARD_WIDTH / 2; half_t = BOARD_THICK / 2
-    grid = []
+    n_x = 80   # lengthwise stations
+    n_y = 32   # widthwise stations per cross-section
+    n_z = 8    # stations around the rounded cross-section profile
+    half_w = BOARD_WIDTH / 2
+    half_t = BOARD_THICK / 2
+
+    # Planform width profile from Hydroskate reference (normalized)
+    profile_stations = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
+                        0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85,
+                        0.90, 0.95, 1.00]
+    profile_widths =   [0.57, 0.74, 0.83, 0.88, 0.91, 0.93, 0.96, 0.98, 0.99,
+                        1.00, 1.00, 1.00, 1.00, 1.00, 0.99, 0.96, 0.94, 0.88,
+                        0.82, 0.71, 0.48]
+
+    def interp_profile(t_val):
+        if t_val <= 0: return profile_widths[0]
+        if t_val >= 1: return profile_widths[-1]
+        for k in range(len(profile_stations) - 1):
+            if profile_stations[k] <= t_val <= profile_stations[k+1]:
+                frac = (t_val - profile_stations[k]) / (profile_stations[k+1] - profile_stations[k])
+                return profile_widths[k] + frac * (profile_widths[k+1] - profile_widths[k])
+        return profile_widths[-1]
+
+    # Build cross-sections along length
+    # Each cross-section is a closed loop: top surface → round edge → bottom → round edge
+    # The loop has n_circ points
+    n_circ = 2 * n_y + 2 * n_z  # top + right_round + bottom + left_round
+
+    # Nose/tail rounding: reduce thickness near the ends
+    def end_thickness_factor(t_val):
+        """Reduce thickness near nose and tail for rounded ends."""
+        nose_zone = 0.08
+        tail_zone = 0.10
+        if t_val < nose_zone:
+            s = t_val / nose_zone
+            return math.sqrt(s)  # smooth ramp from 0 to 1
+        elif t_val > (1.0 - tail_zone):
+            s = (1.0 - t_val) / tail_zone
+            return math.sqrt(s)
+        return 1.0
+
+    rings = []
     for i in range(n_x + 1):
-        row = []
         t = i / n_x
         x = (t - 0.5) * BOARD_LENGTH
-        d = abs(t - 0.45) / 0.53
-        pw = half_w * math.sqrt(max(1-d*d, 0)) if d < 1 else 0.5
-        if t < 0.06: pw *= (t/0.06)**0.7
-        if t > 0.94: pw *= ((1-t)/0.06)**0.7
-        pw = max(pw, 0.5)
+        pw = half_w * interp_profile(t)
+        th_factor = end_thickness_factor(t)
+        ht = half_t * th_factor  # local half-thickness
+
+        ring = []
+        # Build closed cross-section loop:
+        # 1) Top surface: left edge → right edge (n_y+1 points)
         for j in range(n_y + 1):
+            s = j / n_y  # 0=left, 1=right
+            y = (s - 0.5) * 2 * pw
+            yn = abs(s - 0.5) * 2
+            # Gentle deck crown
+            z = ht * (1.0 - 0.08 * (1 - yn * yn))
+            ring.append((x, y, z))
+
+        # 2) Right edge round: top → bottom (n_z-1 interior points)
+        for k in range(1, n_z):
+            angle = k / n_z * math.pi  # 0=top, π=bottom
+            y = pw + ht * 0.3 * math.cos(math.pi - angle)  # slight inward tuck
+            z = ht * math.cos(angle)
+            ring.append((x, y, z))
+
+        # 3) Bottom surface: right edge → left edge (n_y+1 points, reversed)
+        for j in range(n_y, -1, -1):
             s = j / n_y
             y = (s - 0.5) * 2 * pw
             yn = abs(s - 0.5) * 2
-            z = half_t - 0.3*(1-yn*yn)
-            if yn > 0.78: z -= half_t * 0.45 * ((yn-0.78)/0.22)**2
-            row.append(bm.verts.new((x, y, z)))
-        grid.append(row)
+            # Flat bottom with slight V
+            z = -ht * (1.0 - 0.05 * yn)
+            ring.append((x, y, z))
+
+        # 4) Left edge round: bottom → top (n_z-1 interior points)
+        for k in range(1, n_z):
+            angle = k / n_z * math.pi
+            y = -pw - ht * 0.3 * math.cos(math.pi - angle)
+            z = -ht * math.cos(angle)
+            ring.append((x, y, z))
+
+        for v in ring:
+            bm.verts.new(v)
+        rings.append(len(ring))
+
+    n_ring = rings[0]  # all rings same size
     bm.verts.ensure_lookup_table()
+
+    # Connect adjacent rings with quads
     for i in range(n_x):
-        for j in range(n_y):
-            bm.faces.new((grid[i][j], grid[i][j+1], grid[i+1][j+1], grid[i+1][j]))
+        for j in range(n_ring):
+            jn = (j + 1) % n_ring
+            v0 = i * n_ring + j
+            v1 = i * n_ring + jn
+            v2 = (i+1) * n_ring + jn
+            v3 = (i+1) * n_ring + j
+            bm.faces.new((bm.verts[v0], bm.verts[v1], bm.verts[v2], bm.verts[v3]))
+
+    # Cap nose (first ring)
+    center_nose = bm.verts.new(( -0.5 * BOARD_LENGTH, 0, 0))
+    bm.verts.ensure_lookup_table()
+    for j in range(n_ring):
+        jn = (j + 1) % n_ring
+        bm.faces.new((center_nose, bm.verts[jn], bm.verts[j]))
+
+    # Cap tail (last ring)
+    last_start = n_x * n_ring
+    center_tail = bm.verts.new(( 0.5 * BOARD_LENGTH, 0, 0))
+    bm.verts.ensure_lookup_table()
+    for j in range(n_ring):
+        jn = (j + 1) % n_ring
+        bm.faces.new((center_tail, bm.verts[last_start + j], bm.verts[last_start + jn]))
+
     mesh = bpy.data.meshes.new(name)
     bm.to_mesh(mesh); bm.free()
-    obj = bpy.data.objects.new(name, mesh)
-    bpy.context.collection.objects.link(obj)
-    bpy.context.view_layer.objects.active = obj; obj.select_set(True)
-    sol = obj.modifiers.new("Sol", type='SOLIDIFY')
-    sol.thickness = BOARD_THICK; sol.offset = 0; sol.use_quality_normals = True
-    bpy.ops.object.modifier_apply(modifier=sol.name)
-    bpy.ops.object.shade_smooth()
-    return obj
-
-def make_placeholder_mast(name):
-    print("  Placeholder mast...")
-    profile = naca_4digit(MAST_NACA, FOIL_PTS)
-    n_prof = len(profile); n_h = 30
-    verts, faces = [], []
-    for j in range(n_h):
-        t = j/(n_h-1); z = t*MAST_HEIGHT; c = MAST_CHORD*(1-0.1*t)
-        for px, py in profile:
-            verts.append(((px-0.5)*c, py*c, z))
-    for j in range(n_h-1):
-        for i in range(n_prof):
-            faces.append((j*n_prof+i, j*n_prof+(i+1)%n_prof,
-                          (j+1)*n_prof+(i+1)%n_prof, (j+1)*n_prof+i))
-    faces.append(tuple(reversed(range(n_prof))))
-    faces.append(tuple(range((n_h-1)*n_prof, n_h*n_prof)))
-    mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata(verts, [], faces); mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj; obj.select_set(True)
@@ -644,8 +709,158 @@ def make_placeholder_mast(name):
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
+    sub = obj.modifiers.new("Sub", type='SUBSURF'); sub.levels = 2
+    bpy.ops.object.modifier_apply(modifier=sub.name)
     bpy.ops.object.shade_smooth()
     return obj
+
+def make_placeholder_mast(name):
+    print("  Placeholder mast...")
+    profile = naca_4digit(MAST_NACA, FOIL_PTS)
+    n_prof = len(profile)
+
+    # ── Mast foot base plate dimensions ──
+    plate_size = MAST_CHORD * 2.0  # square plate
+    plate_z = 2.0 * _P             # thinner plate for less weight
+
+    # ── Build mast body + steep fairing as one continuous loft ──
+    # Fairing starts at 97% — very steep/short transition to minimize volume
+    n_h = 30          # mast body stations
+    n_fair = 6        # fewer fairing stations (steep)
+    fair_start = 0.97 # fairing begins at 97% of mast height (very short)
+
+    all_verts = []
+    all_faces = []
+    total_rings = n_h + n_fair
+
+    for j in range(total_rings):
+        if j < n_h:
+            t = j / (n_h - 1) * fair_start
+            z = t * MAST_HEIGHT
+            c = MAST_CHORD * (1 - 0.1 * t)
+            blend = 0.0
+        else:
+            fi = j - n_h
+            ft = fi / (n_fair - 1)
+            t = fair_start + ft * (1.0 - fair_start)
+            z = t * MAST_HEIGHT
+            c = MAST_CHORD * (1 - 0.1 * t)
+            # Linear blend for steep transition
+            blend = ft
+
+        for pi in range(n_prof):
+            px, py = profile[pi]
+            mx = (px - 0.5) * c
+            my = py * c
+
+            # Plate outline: superellipse for rounded square
+            angle = 2 * math.pi * pi / n_prof
+            ca = math.cos(angle)
+            sa = math.sin(angle)
+            n_exp = 4.0
+            r_sq = plate_size / 2 * 0.92
+            denom = (abs(ca)**n_exp + abs(sa)**n_exp) ** (1.0 / n_exp)
+            ex = r_sq * ca / denom if denom > 0.001 else 0
+            ey = r_sq * sa / denom if denom > 0.001 else 0
+
+            x_f = mx + blend * (ex - mx)
+            y_f = my + blend * (ey - my)
+            all_verts.append((x_f, y_f, z))
+
+    # Connect rings with quads
+    for j in range(total_rings - 1):
+        for i in range(n_prof):
+            i_next = (i + 1) % n_prof
+            v0 = j * n_prof + i
+            v1 = j * n_prof + i_next
+            v2 = (j + 1) * n_prof + i_next
+            v3 = (j + 1) * n_prof + i
+            all_faces.append((v0, v1, v2, v3))
+
+    # Bottom cap (fuselage end)
+    all_faces.append(tuple(reversed(range(n_prof))))
+    # Top cap (plate underside)
+    last_start = (total_rings - 1) * n_prof
+    all_faces.append(tuple(range(last_start, last_start + n_prof)))
+
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(all_verts, [], all_faces); mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj; obj.select_set(True)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # ── Plate ──
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    plate = bpy.context.active_object
+    plate.name = "MastPlate"
+    plate.scale = (plate_size/2, plate_size/2, plate_z/2)
+    plate.location = (0, 0, MAST_HEIGHT + plate_z/2)
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    # Weight reduction pockets on plate underside
+    screw_inset = plate_size * 0.30
+    pocket_depth = plate_z * 0.60
+    pocket_z_pos = MAST_HEIGHT + pocket_depth / 2
+    mast_clearance = MAST_CHORD * 0.55
+    screw_boss_r = SCREW_DIAM * 2.5
+    pocket_cx = screw_inset / 2
+    pocket_cy = screw_inset / 2
+    pocket_r = max(screw_inset - mast_clearance/2 - screw_boss_r - plate_size*0.06, plate_size * 0.06)
+
+    for sign_x, sign_y in [(-1,-1), (-1,1), (1,-1), (1,1)]:
+        bpy.ops.mesh.primitive_cylinder_add(
+            radius=pocket_r / 2, depth=pocket_depth, vertices=24,
+            location=(sign_x * pocket_cx, sign_y * pocket_cy, pocket_z_pos))
+        pkt = bpy.context.active_object
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        bpy.context.view_layer.objects.active = plate
+        plate.select_set(True)
+        mod = plate.modifiers.new("Pocket", type='BOOLEAN')
+        mod.object = pkt; mod.operation = 'DIFFERENCE'
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        bpy.data.objects.remove(pkt, do_unlink=True)
+
+    # Round plate corners
+    bpy.context.view_layer.objects.active = plate
+    plate.select_set(True)
+    bev = plate.modifiers.new("Bev", type='BEVEL')
+    bev.width = plate_size * 0.12
+    bev.segments = 4
+    bev.limit_method = 'ANGLE'
+    bev.angle_limit = math.radians(60)
+    bpy.ops.object.modifier_apply(modifier=bev.name)
+
+    # Join mast body + plate into one object
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    plate.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.join()
+
+    # Drill 4 screw holes AFTER joining — goes through plate AND mast body
+    screw_z = MAST_HEIGHT + plate_z / 2
+    for sx, sy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
+        bpy.ops.mesh.primitive_cylinder_add(
+            radius=SCREW_DIAM / 2, depth=MAST_HEIGHT * 0.15 + plate_z,
+            vertices=24,
+            location=(sx * screw_inset, sy * screw_inset, MAST_HEIGHT))
+        cyl = bpy.context.active_object
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        mod = obj.modifiers.new("ScrewHole", type='BOOLEAN')
+        mod.object = cyl; mod.operation = 'DIFFERENCE'
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        bpy.data.objects.remove(cyl, do_unlink=True)
+
+    bpy.ops.object.shade_smooth()
+    return obj
+
+
 
 def make_placeholder_fuselage(name):
     print("  Placeholder fuselage...")
@@ -898,19 +1113,42 @@ print("[1/5] Board...")
 clear_scene()
 board = import_and_scale_mesh(BOARD_FILE, SCALE, "Board") if BOARD_FILE else None
 if not board: board = make_placeholder_board("Board")
-mast_top_c = MAST_CHORD * 0.90
-cut_rounded_slot(board,
-    mast_top_c*0.13 + SLOT_CLEARANCE*2,
-    mast_top_c + SLOT_CLEARANCE*2,
-    6.0*_P, (0, 0, -BOARD_THICK/2 + 2.5*_P))
-bpy.ops.mesh.primitive_cylinder_add(radius=3*_P, depth=2.2*_P,
-    location=(BOARD_LENGTH*0.1, 0, BOARD_THICK/2-0.5*_P))
-mag = bpy.context.active_object
+
+# Mast foot plate recess on the bottom of the board
+# Mast at 80% from nose = +30% from center
+mast_board_x = BOARD_LENGTH * 0.30
+plate_x = MAST_CHORD * 2.0
+plate_y = MAST_CHORD * 2.0  # square plate
+plate_z = 2.0 * _P  # matches mast plate thickness
+
+# Cutter must extend well below board bottom and into interior
+recess_depth = plate_z + BOARD_THICK * 0.3  # plate depth + extra to cut through bottom skin
+bpy.ops.mesh.primitive_cube_add(size=1)
+recess = bpy.context.active_object
+recess.scale = (plate_x/2 + SLOT_CLEARANCE, plate_y/2 + SLOT_CLEARANCE, recess_depth/2)
+# Position so the TOP face of the cutter is plate_z above the board bottom
+recess.location = (mast_board_x, 0, -BOARD_THICK/2 + recess_depth/2)
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+bev = recess.modifiers.new("Bev", type='BEVEL')
+bev.width = plate_x * 0.12
+bev.segments = 4
+bev.limit_method = 'ANGLE'; bev.angle_limit = math.radians(60)
+bpy.context.view_layer.objects.active = recess
+bpy.ops.object.modifier_apply(modifier=bev.name)
 bpy.context.view_layer.objects.active = board; board.select_set(True)
-bm = board.modifiers.new("M", type='BOOLEAN'); bm.object = mag; bm.operation = 'DIFFERENCE'
+bm = board.modifiers.new("Recess", type='BOOLEAN'); bm.object = recess; bm.operation = 'DIFFERENCE'
 bpy.ops.object.modifier_apply(modifier=bm.name)
-bpy.data.objects.remove(mag, do_unlink=True)
+bpy.data.objects.remove(recess, do_unlink=True)
+
+# 4 screw holes matching the mast foot plate corners
+screw_inset = plate_x * 0.30
+add_screw_holes(board,
+    [(mast_board_x - screw_inset, -screw_inset, 0),
+     (mast_board_x - screw_inset,  screw_inset, 0),
+     (mast_board_x + screw_inset, -screw_inset, 0),
+     (mast_board_x + screw_inset,  screw_inset, 0)],
+    SCREW_DIAM, BOARD_THICK + 4*_P, 'z')
+
 export_stl(board, "1_board.stl")
 
 # 2. Mast
@@ -949,7 +1187,7 @@ print(f"\n{'='*60}")
 print(f"  Done! → {export_dir}")
 print(f"{'='*60}")
 print(f"""
-  1_board.stl        {BOARD_LENGTH:.0f} x {BOARD_WIDTH:.0f} x {BOARD_THICK:.0f}mm {'('+BOARD_FILE+')' if BOARD_FILE else '(generated)'}
+  1_board.stl        {BOARD_LENGTH:.0f} x {BOARD_WIDTH:.0f} x {BOARD_THICK:.1f}mm {'('+BOARD_FILE+')' if BOARD_FILE else '(generated)'}
   2_mast.stl         {MAST_HEIGHT:.0f}mm tall, {MAST_CHORD:.0f}mm chord, NACA {MAST_NACA} {'('+MAST_FILE+')' if MAST_FILE else '(generated)'}
   3_fuselage.stl     {FUSE_LENGTH:.1f}mm long, {4.76*2*_P:.1f}mm wide {'('+FUSE_FILE+')' if FUSE_FILE else '(generated)'}
   4_frontwing.stl    {FW_SPAN:.0f}mm span, {FW_ROOT_CHORD:.1f}mm root chord, NACA {FW_NACA}
