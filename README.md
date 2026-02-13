@@ -8,6 +8,34 @@ All geometry is generated procedurally — no input files required. Optionally, 
 
 - [Blender](https://www.blender.org/) (tested with 4.x)
 
+## Python venv setup
+
+Blender ships its own Python, but if you need additional packages (e.g. for post-processing), set up a venv using Blender's Python:
+
+```bash
+# Find Blender's Python
+BLENDER_PYTHON=$(/Applications/Blender.app/Contents/MacOS/Blender -b --python-expr "import sys; print(sys.executable)" 2>/dev/null | grep python)
+
+# Create venv
+$BLENDER_PYTHON -m venv ~/.blender_venv
+
+# Activate
+source ~/.blender_venv/bin/activate
+
+# Install packages if needed
+pip install numpy
+```
+
+On Linux:
+
+```bash
+BLENDER_PYTHON=$(blender -b --python-expr "import sys; print(sys.executable)" 2>/dev/null | grep python)
+$BLENDER_PYTHON -m venv ~/.blender_venv
+source ~/.blender_venv/bin/activate
+```
+
+Note: `fingerfoil.py` only uses Blender's built-in modules (`bpy`, `bmesh`, `math`, `os`, `sys`) — no extra packages are needed to run it.
+
 ## Usage
 
 ```bash
