@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 
 # ============================================================
-# FUSELAGE (piece 3)
+# FUSELAGE (piece 3) — length along X axis (same as board)
 # ============================================================
 
 def make_placeholder_fuselage(name):
@@ -12,12 +12,13 @@ def make_placeholder_fuselage(name):
     fw_r = 4.76 * PS; fh = 6.0 * PS
     n_circ = 32
 
-    fy = FUSE_LENGTH * 0.11
-    sy = FUSE_LENGTH * 0.88
+    # Wing junction positions along fuselage length (X axis)
+    fx = FUSE_LENGTH * 0.11   # front wing X
+    sx = FUSE_LENGTH * 0.88   # stabilizer X
 
-    def naca_lower_z_at(code, chord, fuse_y, y_center):
+    def naca_lower_z_at(code, chord, fuse_x, x_center):
         m_v = int(code[0])/100; p_c = int(code[1])/10; t_v = int(code[2:])/100
-        px = (fuse_y - y_center) / chord + 0.30
+        px = (fuse_x - x_center) / chord + 0.30
         if px < 0.001 or px > 0.999:
             return None, None
         yt = 5*t_v*(0.2969*math.sqrt(px)-0.126*px-0.3516*px**2+0.2843*px**3-0.1015*px**4)
@@ -30,41 +31,42 @@ def make_placeholder_fuselage(name):
         half_t = yt * chord
         return z_lower, half_t
 
-    fw_blend_y = 5.0 * PS
-    st_blend_y = 4.0 * PS
+    fw_blend = 5.0 * PS
+    st_blend = 4.0 * PS
 
-    y_stations = set()
+    # Dense X stations near junctions
+    x_stations = set()
     for i in range(81):
-        y_stations.add(i / 80 * FUSE_LENGTH)
-    for yc in [fy, sy]:
-        for dy in [-8, -6, -5, -4, -3, -2.5, -2, -1.5, -1, -0.5, 0,
+        x_stations.add(i / 80 * FUSE_LENGTH)
+    for xc in [fx, sx]:
+        for dx in [-8, -6, -5, -4, -3, -2.5, -2, -1.5, -1, -0.5, 0,
                     0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8]:
-            yv = yc + dy * PS
-            if 0 <= yv <= FUSE_LENGTH:
-                y_stations.add(yv)
-    y_stations = sorted(y_stations)
-    n_len = len(y_stations)
+            xv = xc + dx * PS
+            if 0 <= xv <= FUSE_LENGTH:
+                x_stations.add(xv)
+    x_stations = sorted(x_stations)
+    n_len = len(x_stations)
 
     bm = bmesh.new()
 
-    for i, y in enumerate(y_stations):
-        t = y / FUSE_LENGTH
+    for i, xpos in enumerate(x_stations):
+        t = xpos / FUSE_LENGTH
         if t < 0.15:
             s = t / 0.15
             rf = 0.35 + 0.65 * math.sin(s * math.pi / 2)
         elif t < 0.55: rf = 1.0
         else:          rf = 1.0 - (t-0.55)/0.45*0.65
-        rx = max(fw_r*rf, 0.3); rz = max(fh/2*rf, 0.3)
+        ry = max(fw_r*rf, 0.3); rz = max(fh/2*rf, 0.3)
 
-        fw_d = abs(y - fy)
-        st_d = abs(y - sy)
-        fw_t = max(0, 1.0 - fw_d / fw_blend_y) if fw_d < fw_blend_y else 0
-        st_t = max(0, 1.0 - st_d / st_blend_y) if st_d < st_blend_y else 0
+        fw_d = abs(xpos - fx)
+        st_d = abs(xpos - sx)
+        fw_t = max(0, 1.0 - fw_d / fw_blend) if fw_d < fw_blend else 0
+        st_t = max(0, 1.0 - st_d / st_blend) if st_d < st_blend else 0
         fw_t = (math.sin(fw_t * math.pi / 2)) ** 2
         st_t = (math.sin(st_t * math.pi / 2)) ** 2
 
-        fw_z, fw_ht = naca_lower_z_at(FW_NACA, FW_ROOT_CHORD, y, fy)
-        st_z, st_ht = naca_lower_z_at(STAB_NACA, STAB_ROOT_CHORD, y, sy)
+        fw_z, fw_ht = naca_lower_z_at(FW_NACA, FW_ROOT_CHORD, xpos, fx)
+        st_z, st_ht = naca_lower_z_at(STAB_NACA, STAB_ROOT_CHORD, xpos, sx)
 
         blend = 0; wing_z_lower = None
         if fw_t > st_t and fw_z is not None:
@@ -74,7 +76,7 @@ def make_placeholder_fuselage(name):
 
         for j in range(n_circ):
             th = 2 * math.pi * j / n_circ
-            x_ell = rx * math.cos(th)
+            y_ell = ry * math.cos(th)
             z_ell = rz * math.sin(th) + fh/2
 
             if blend > 0 and wing_z_lower is not None and math.sin(th) > 0:
@@ -84,7 +86,7 @@ def make_placeholder_fuselage(name):
                 if z_ell > target_z:
                     z_ell = z_ell - vert_blend * (z_ell - target_z)
 
-            bm.verts.new((x_ell, y, z_ell))
+            bm.verts.new((xpos, y_ell, z_ell))
 
     bm.verts.ensure_lookup_table()
 
@@ -94,11 +96,13 @@ def make_placeholder_fuselage(name):
             bm.faces.new((bm.verts[i*n_circ+j], bm.verts[i*n_circ+jn],
                            bm.verts[(i+1)*n_circ+jn], bm.verts[(i+1)*n_circ+j]))
 
-    nv = bm.verts.new((0, -0.5*PS, fh/2)); bm.verts.ensure_lookup_table()
+    # Nose cap
+    nv = bm.verts.new((-0.5*PS, 0, fh/2)); bm.verts.ensure_lookup_table()
     for j in range(n_circ):
         bm.faces.new((nv, bm.verts[(j+1)%n_circ], bm.verts[j]))
+    # Tail cap
     tb = (n_len - 1) * n_circ
-    tv = bm.verts.new((0, FUSE_LENGTH+0.5*PS, fh/2)); bm.verts.ensure_lookup_table()
+    tv = bm.verts.new((FUSE_LENGTH+0.5*PS, 0, fh/2)); bm.verts.ensure_lookup_table()
     for j in range(n_circ):
         bm.faces.new((tv, bm.verts[tb+j], bm.verts[tb+(j+1)%n_circ]))
 
@@ -113,7 +117,7 @@ def make_placeholder_fuselage(name):
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # NACA-shaped mast pocket
-    py_pos = FUSE_LENGTH * 0.44
+    px_pos = FUSE_LENGTH * 0.44
     profile = naca_4digit(MAST_NACA, 48)
     cl = SLOT_CLEARANCE
     mast_c = MAST_CHORD + cl * 2
@@ -125,9 +129,9 @@ def make_placeholder_fuselage(name):
     z_top = fh + 2.0 * PS
 
     for zi, z in enumerate([z_bot, z_top]):
-        for px, pz in profile:
-            fuse_y = (px - 0.5) * mast_c + py_pos
-            fuse_x = pz * mast_c
+        for ppx, pz in profile:
+            fuse_x = (ppx - 0.5) * mast_c + px_pos
+            fuse_y = pz * mast_c
             cutter_verts.append((fuse_x, fuse_y, z))
 
     for i in range(n_prof):
@@ -155,25 +159,28 @@ def make_placeholder_fuselage(name):
     sub = obj.modifiers.new("S", type='SUBSURF'); sub.levels = 1
     bpy.ops.object.modifier_apply(modifier=sub.name)
 
-    # Screw holes
+    # Screw holes — all along X now
+    # Front wing screws: 3 vertical through full fuselage
     add_screw_holes(obj,
-        [(0, fy - 2.0*PS, fh/2),
-         (0, fy + 3.0*PS, fh/2),
-         (0, fy + 8.0*PS, fh/2)],
+        [(fx - 2.0*PS, 0, fh/2),
+         (fx + 3.0*PS, 0, fh/2),
+         (fx + 8.0*PS, 0, fh/2)],
         SCREW_DIAM, fh + 4*PS, 'z')
 
+    # Stab screws: 2 vertical
     st_shift = STAB_ROOT_CHORD * 0.25
     st_half_sp = STAB_ROOT_CHORD * 0.15
     add_screw_holes(obj,
-        [(0, sy - st_half_sp + st_shift, fh/2),
-         (0, sy + st_half_sp + st_shift, fh/2)],
+        [(sx - st_half_sp + st_shift, 0, fh/2),
+         (sx + st_half_sp + st_shift, 0, fh/2)],
         SCREW_DIAM, fh + 4*PS, 'z')
 
+    # Mast screws: 2 vertical from bottom into mast pocket floor
     mast_screw_z = fh * 0.25
     mast_screw_depth = fh * 0.5 + 2*PS
     add_screw_holes(obj,
-        [(0, py_pos - 7.0*PS, mast_screw_z),
-         (0, py_pos - 1.0*PS, mast_screw_z)],
+        [(px_pos - 7.0*PS, 0, mast_screw_z),
+         (px_pos - 1.0*PS, 0, mast_screw_z)],
         SCREW_DIAM, mast_screw_depth, 'z')
 
     bpy.ops.object.shade_smooth()

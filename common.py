@@ -18,6 +18,7 @@ PIECE_SCALE = 0.50
 BOARD_FILE = None
 MAST_FILE  = None
 FUSE_FILE  = None
+COMBINED   = False
 
 argv = sys.argv
 if '--' in argv:
@@ -33,6 +34,8 @@ if '--' in argv:
             MAST_FILE = os.path.expanduser(custom_args[i + 1]); i += 2
         elif arg == '-fuse' and i + 1 < len(custom_args):
             FUSE_FILE = os.path.expanduser(custom_args[i + 1]); i += 2
+        elif arg == '-combined':
+            COMBINED = True; i += 1
         else:
             i += 1
 
@@ -52,13 +55,14 @@ FW_TAB_THICKNESS = 2.5*PS;  FW_TAB_LENGTH = 14.0*PS
 STAB_TAB_THICKNESS = 2.0*PS; STAB_TAB_LENGTH = 10.0*PS
 
 FW_SPAN = 200.0*PS;  FW_ROOT_CHORD = 25.2*PS;  FW_TIP_CHORD = 12.6*PS
-FW_SWEEP = 10.0*PS;  FW_DIHEDRAL = 3.0*PS;     FW_NACA = '2412'
+FW_SWEEP = 10.0*PS;  FW_DIHEDRAL = 3.0;        FW_NACA = '2412'
 FW_TWIST = -2.0
 
 STAB_SPAN = 45.0*PS;  STAB_ROOT_CHORD = 12.6*PS;  STAB_TIP_CHORD = 7.0*PS
 STAB_SWEEP = 2.5*PS;  STAB_NACA = '0024'
 
 SLOT_CLEARANCE = 0.3*PS;  SCREW_DIAM = 1.6*PS;  FOIL_PTS = 80
+
 
 
 # ============================================================
@@ -68,197 +72,280 @@ SLOT_CLEARANCE = 0.3*PS;  SCREW_DIAM = 1.6*PS;  FOIL_PTS = 80
 def cubic_bspline_prep(knots, values):
     """Compute natural cubic spline coefficients."""
     n = len(knots) - 1
+    if n < 1:
+        return [(values[0], 0.0, 0.0, 0.0)]
+
+    a = list(values)
     h = [knots[i+1] - knots[i] for i in range(n)]
+
     alpha = [0.0] * (n + 1)
     for i in range(1, n):
-        alpha[i] = (3/h[i]*(values[i+1]-values[i]) - 3/h[i-1]*(values[i]-values[i-1]))
-    l = [1.0] + [0.0]*n
-    mu = [0.0]*(n+1)
-    z = [0.0]*(n+1)
+        if h[i-1] == 0 or h[i] == 0:
+            alpha[i] = 0
+        else:
+            alpha[i] = (3.0/h[i] * (a[i+1] - a[i])
+                        - 3.0/h[i-1] * (a[i] - a[i-1]))
+
+    l = [1.0] + [0.0] * n
+    mu = [0.0] * (n + 1)
+    z = [0.0] * (n + 1)
+
     for i in range(1, n):
-        l[i] = 2*(knots[i+1]-knots[i-1]) - h[i-1]*mu[i-1]
-        mu[i] = h[i]/l[i]
-        z[i] = (alpha[i]-h[i-1]*z[i-1])/l[i]
+        l[i] = 2.0 * (knots[i+1] - knots[i-1]) - h[i-1] * mu[i-1]
+        if abs(l[i]) < 1e-12:
+            l[i] = 1e-12
+        mu[i] = h[i] / l[i]
+        z[i] = (alpha[i] - h[i-1] * z[i-1]) / l[i]
+
     l[n] = 1.0
-    c = [0.0]*(n+1)
-    b = [0.0]*n
-    d = [0.0]*n
-    for j in range(n-1, -1, -1):
-        c[j] = z[j] - mu[j]*c[j+1]
-        b[j] = (values[j+1]-values[j])/h[j] - h[j]*(c[j+1]+2*c[j])/3
-        d[j] = (c[j+1]-c[j])/(3*h[j])
-    return (list(values[:n+1]), b, c[:n+1], d)
+    z[n] = 0.0
+
+    c = [0.0] * (n + 1)
+    b = [0.0] * n
+    d = [0.0] * n
+
+    for j in range(n - 1, -1, -1):
+        c[j] = z[j] - mu[j] * c[j+1]
+        if abs(h[j]) < 1e-12:
+            b[j] = 0.0
+            d[j] = 0.0
+        else:
+            b[j] = (a[j+1] - a[j]) / h[j] - h[j] * (c[j+1] + 2.0*c[j]) / 3.0
+            d[j] = (c[j+1] - c[j]) / (3.0 * h[j])
+
+    return [(a[i], b[i], c[i], d[i]) for i in range(n)]
+
 
 def cubic_bspline_eval(knots, coeffs, x):
-    """Evaluate cubic spline at x."""
-    a, b, c, d = coeffs
-    n = len(knots) - 1
-    if x <= knots[0]:
-        dx = x - knots[0]
-        return a[0] + b[0]*dx
-    if x >= knots[n]:
-        dx = x - knots[n-1]
-        return a[n-1] + b[n-1]*dx + c[n-1]*dx*dx + d[n-1]*dx*dx*dx
-    lo, hi = 0, n-1
-    while lo < hi:
-        mid = (lo+hi)//2
-        if knots[mid+1] < x: lo = mid+1
-        else: hi = mid
-    dx = x - knots[lo]
-    return a[lo] + b[lo]*dx + c[lo]*dx*dx + d[lo]*dx*dx*dx
+    """Evaluate the cubic spline at point x."""
+    n = len(coeffs)
+    x = max(knots[0], min(knots[-1], x))
+
+    seg = 0
+    for i in range(n):
+        if x >= knots[i]:
+            seg = i
+    if seg >= n:
+        seg = n - 1
+
+    dx = x - knots[seg]
+    a, b, c, d = coeffs[seg]
+    return a + b*dx + c*dx*dx + d*dx*dx*dx
+
+
+class SplineDistribution:
+    """Defines a spanwise parameter distribution using cubic splines."""
+    def __init__(self, control_points):
+        self.knots = [cp[0] for cp in control_points]
+        self.values = [cp[1] for cp in control_points]
+        self.coeffs = cubic_bspline_prep(self.knots, self.values)
+
+    def __call__(self, eta):
+        return cubic_bspline_eval(self.knots, self.coeffs, eta)
 
 
 # ============================================================
-# NACA AIRFOIL
+# AIRFOIL PROFILES
 # ============================================================
 
 def naca_4digit(code='0012', n=80, te_thickness=0.002):
+    """NACA 4-digit airfoil with optional finite trailing edge thickness."""
     m = int(code[0]) / 100.0
     p = int(code[1]) / 10.0
-    t_max = int(code[2:4]) / 100.0
-    pts = []
-    for i in range(n):
-        beta = math.pi * i / (n - 1)
-        x = 0.5 * (1 - math.cos(beta))
-        yt = 5 * t_max * (0.2969*math.sqrt(x) - 0.1260*x - 0.3516*x**2
-                          + 0.2843*x**3 - 0.1015*x**4)
-        if te_thickness > 0:
-            yt = max(yt, te_thickness * (1 - x))
-        if p > 0 and m > 0:
-            yc = m/(p*p)*(2*p*x - x*x) if x < p else m/((1-p)**2)*((1-2*p)+2*p*x-x*x)
-            dyc = 2*m/(p*p)*(p-x) if x < p else 2*m/((1-p)**2)*(p-x)
-            theta = math.atan(dyc)
-            xu = x - yt*math.sin(theta); yu = yc + yt*math.cos(theta)
-            xl = x + yt*math.sin(theta); yl = yc - yt*math.cos(theta)
+    t = int(code[2:]) / 100.0
+
+    def yt(x):
+        a4 = -0.1015 + te_thickness / (5.0 * t) if t > 0 else -0.1015
+        return 5.0 * t * (
+            0.2969 * math.sqrt(max(x, 0))
+            - 0.1260 * x - 0.3516 * x**2
+            + 0.2843 * x**3 + a4 * x**4
+        )
+
+    def camber(x):
+        if p == 0 or m == 0:
+            return 0.0, 0.0
+        if x < p:
+            yc = m / p**2 * (2*p*x - x**2)
+            dyc = 2*m / p**2 * (p - x)
         else:
-            xu, yu = x, yt
-            xl, yl = x, -yt
-        pts.append((xu, yu))
-    for i in range(n-2, 0, -1):
-        beta = math.pi * i / (n - 1)
+            yc = m / (1-p)**2 * ((1-2*p) + 2*p*x - x**2)
+            dyc = 2*m / (1-p)**2 * (p - x)
+        return yc, dyc
+
+    upper, lower = [], []
+    for i in range(n + 1):
+        beta = math.pi * i / n
         x = 0.5 * (1 - math.cos(beta))
-        yt = 5 * t_max * (0.2969*math.sqrt(x) - 0.1260*x - 0.3516*x**2
-                          + 0.2843*x**3 - 0.1015*x**4)
-        if te_thickness > 0:
-            yt = max(yt, te_thickness * (1 - x))
-        if p > 0 and m > 0:
-            yc = m/(p*p)*(2*p*x - x*x) if x < p else m/((1-p)**2)*((1-2*p)+2*p*x-x*x)
-            dyc = 2*m/(p*p)*(p-x) if x < p else 2*m/((1-p)**2)*(p-x)
-            theta = math.atan(dyc)
-            xl = x + yt*math.sin(theta); yl = yc - yt*math.cos(theta)
-        else:
-            xl, yl = x, -yt
-        pts.append((xl, yl))
-    return pts
+        y = yt(x)
+        yc, dyc = camber(x)
+        th = math.atan(dyc) if (p > 0 and m > 0) else 0.0
+        upper.append((x - y*math.sin(th), yc + y*math.cos(th)))
+        lower.append((x + y*math.sin(th), yc - y*math.cos(th)))
+
+    return list(reversed(upper)) + lower[1:]
 
 
 # ============================================================
-# B-SPLINE WING LOFTING
+# B-SPLINE WING LOFT
 # ============================================================
 
 def loft_bspline_wing(name, root_chord, tip_chord, span,
-                      sweep, dihedral, twist_deg, naca_code,
-                      n_span_half=40):
-    profile = naca_4digit(naca_code, FOIL_PTS)
+                      sweep, dihedral_deg, twist_deg,
+                      naca_code, n_span_half=40):
+    """Loft a wing using cubic B-spline spanwise interpolation.
+    Orientation: span=Y, chord=X, thickness=Z.
+    """
+    profile = naca_4digit(naca_code, FOIL_PTS, te_thickness=0.002)
     n_prof = len(profile)
-    half_span = span / 2
+    half_span = span / 2.0
+    dihedral = math.radians(dihedral_deg)
+    twist_tip = math.radians(twist_deg)
 
-    eta_knots = [0.0, 0.3, 0.7, 1.0]
-    chord_vals = [root_chord,
-                  root_chord - 0.25*(root_chord-tip_chord),
-                  tip_chord + 0.15*(root_chord-tip_chord),
-                  tip_chord]
-    sweep_vals = [0, sweep*0.3, sweep*0.75, sweep]
-    dihed_vals = [0, dihedral*0.2, dihedral*0.65, dihedral]
-    twist_vals = [0, twist_deg*0.15, twist_deg*0.6, twist_deg]
+    chord_spline = SplineDistribution([
+        (0.00, root_chord),
+        (0.10, root_chord * 0.98),
+        (0.30, root_chord * 0.90 + tip_chord * 0.10),
+        (0.60, root_chord * 0.50 + tip_chord * 0.50),
+        (0.80, tip_chord * 0.95),
+        (0.90, tip_chord * 0.70),
+        (0.95, tip_chord * 0.45),
+        (1.00, tip_chord * 0.25),
+    ])
 
-    chord_coeffs = cubic_bspline_prep(eta_knots, chord_vals)
-    sweep_coeffs = cubic_bspline_prep(eta_knots, sweep_vals)
-    dihed_coeffs = cubic_bspline_prep(eta_knots, dihed_vals)
-    twist_coeffs = cubic_bspline_prep(eta_knots, twist_vals)
+    sweep_spline = SplineDistribution([
+        (0.00, 0.0),
+        (0.30, sweep * 0.08),
+        (0.60, sweep * 0.35),
+        (0.80, sweep * 0.65),
+        (1.00, sweep),
+    ])
 
-    sections_eta = []
-    for i in range(n_span_half + 1):
-        beta = math.pi * 0.5 * i / n_span_half
-        sections_eta.append(1 - math.cos(beta))
+    twist_spline = SplineDistribution([
+        (0.00, 0.0),
+        (0.30, twist_tip * 0.05),
+        (0.60, twist_tip * 0.25),
+        (0.80, twist_tip * 0.55),
+        (1.00, twist_tip),
+    ])
 
-    all_verts = []
-    all_faces = []
-    total_sections = len(sections_eta) * 2 - 1
+    thick_spline = SplineDistribution([
+        (0.00, 1.0),
+        (0.50, 1.0),
+        (0.70, 0.95),
+        (0.80, 0.80),
+        (0.90, 0.55),
+        (0.95, 0.35),
+        (1.00, 0.20),
+    ])
 
-    for side in [1, -1]:
-        etas = sections_eta if side == 1 else list(reversed(sections_eta[1:]))
-        for eta in etas:
-            c = cubic_bspline_eval(eta_knots, chord_coeffs, eta)
-            sw = cubic_bspline_eval(eta_knots, sweep_coeffs, eta)
-            dh = cubic_bspline_eval(eta_knots, dihed_coeffs, eta)
-            tw = cubic_bspline_eval(eta_knots, twist_coeffs, eta)
-            tw_rad = math.radians(tw)
-            y_pos = side * eta * half_span
+    etas_half = []
+    for j in range(n_span_half + 1):
+        eta_cos = 1.0 - math.cos(math.pi / 2 * j / n_span_half)
+        etas_half.append(min(eta_cos, 1.0))
 
-            for px, py in profile:
-                xr = (px - 0.25) * c
-                zr = py * c
-                x_tw = xr * math.cos(tw_rad) - zr * math.sin(tw_rad)
-                z_tw = xr * math.sin(tw_rad) + zr * math.cos(tw_rad)
-                x_final = x_tw + 0.25*c + sw
-                y_final = y_pos
-                z_final = z_tw + dh
-                all_verts.append((x_final, y_final, z_final))
+    etas_full = []
+    for eta in reversed(etas_half[1:]):
+        etas_full.append(-eta)
+    etas_full.append(0.0)
+    for eta in etas_half[1:]:
+        etas_full.append(eta)
 
-    n_sections = total_sections
-    for s in range(n_sections - 1):
+    verts = []
+    for eta_signed in etas_full:
+        eta = abs(eta_signed)
+        y = eta_signed * half_span
+
+        c = chord_spline(eta)
+        sw = sweep_spline(eta)
+        tw = twist_spline(eta)
+        th_mult = thick_spline(eta)
+        z_off = abs(y) * math.tan(dihedral)
+
+        c = max(c, 0.5)
+
+        cos_tw = math.cos(tw)
+        sin_tw = math.sin(tw)
+        for px, py in profile:
+            x_local = px * c - c * 0.30
+            z_local = py * c * th_mult
+            x_rot = x_local * cos_tw + z_local * sin_tw
+            z_rot = -x_local * sin_tw + z_local * cos_tw
+            verts.append((sw + x_rot, y, z_rot + z_off))
+
+    n_sections = len(etas_full)
+    faces = []
+    for j in range(n_sections - 1):
         for i in range(n_prof):
             i_next = (i + 1) % n_prof
-            v0 = s * n_prof + i
-            v1 = s * n_prof + i_next
-            v2 = (s + 1) * n_prof + i_next
-            v3 = (s + 1) * n_prof + i
-            all_faces.append((v0, v1, v2, v3))
+            v0 = j*n_prof + i
+            v1 = j*n_prof + i_next
+            v2 = (j+1)*n_prof + i_next
+            v3 = (j+1)*n_prof + i
+            faces.append((v0, v1, v2, v3))
 
-    # Tip caps
-    n_tip_rings = 8
-    for tip_side, base_section in [(1, n_span_half), (-1, total_sections - 1)]:
-        base_start = base_section * n_prof
-        tip_y = tip_side * half_span
-        center_x = sum(all_verts[base_start + i][0] for i in range(n_prof)) / n_prof
-        center_z = sum(all_verts[base_start + i][2] for i in range(n_prof)) / n_prof
-        prev_ring_start = base_start
+    # Rounded tip caps
+    cap_rings = 8
+    for tip_side in [0, n_sections - 1]:
+        base_idx = tip_side * n_prof
+        y_tip = verts[base_idx][1]
+        sign = -1.0 if tip_side == 0 else 1.0
 
-        for ring in range(1, n_tip_rings + 1):
-            t = ring / n_tip_rings
-            shrink = math.cos(t * math.pi / 2)
-            y_off = tip_side * half_span * 0.03 * math.sin(t * math.pi / 2)
+        cx = sum(verts[base_idx + i][0] for i in range(n_prof)) / n_prof
+        cz = sum(verts[base_idx + i][2] for i in range(n_prof)) / n_prof
 
-            if ring < n_tip_rings:
-                ring_start = len(all_verts)
+        prev_ring_start = base_idx
+        for ring in range(1, cap_rings + 1):
+            t = ring / cap_rings
+            r_factor = math.cos(t * math.pi / 2)
+            y_offset = math.sin(t * math.pi / 2)
+
+            max_extent = 0
+            for i in range(n_prof):
+                dx = verts[base_idx + i][0] - cx
+                dz = verts[base_idx + i][2] - cz
+                max_extent = max(max_extent, math.sqrt(dx*dx + dz*dz))
+
+            y_new = y_tip + sign * y_offset * max_extent * 0.5
+
+            if ring < cap_rings:
+                ring_start = len(verts)
                 for i in range(n_prof):
-                    bx, by, bz = all_verts[base_start + i]
-                    nx = center_x + (bx - center_x) * shrink
-                    nz = center_z + (bz - center_z) * shrink
-                    all_verts.append((nx, tip_y + y_off, nz))
+                    ox = verts[base_idx + i][0]
+                    oz = verts[base_idx + i][2]
+                    nx = cx + (ox - cx) * r_factor
+                    nz = cz + (oz - cz) * r_factor
+                    verts.append((nx, y_new, nz))
+
                 for i in range(n_prof):
                     i_next = (i + 1) % n_prof
-                    if tip_side == 1:
-                        all_faces.append((prev_ring_start + i, prev_ring_start + i_next,
-                                          ring_start + i_next, ring_start + i))
+                    pv0 = prev_ring_start + i
+                    pv1 = prev_ring_start + i_next
+                    cv0 = ring_start + i
+                    cv1 = ring_start + i_next
+
+                    if tip_side == 0:
+                        faces.append((pv1, pv0, cv0, cv1))
                     else:
-                        all_faces.append((prev_ring_start + i_next, prev_ring_start + i,
-                                          ring_start + i, ring_start + i_next))
+                        faces.append((pv0, pv1, cv1, cv0))
+
                 prev_ring_start = ring_start
             else:
-                tip_center = len(all_verts)
-                all_verts.append((center_x, tip_y + y_off, center_z))
+                center_idx = len(verts)
+                verts.append((cx, y_new, cz))
                 for i in range(n_prof):
                     i_next = (i + 1) % n_prof
-                    if tip_side == 1:
-                        all_faces.append((prev_ring_start + i, prev_ring_start + i_next, tip_center))
+                    pv0 = prev_ring_start + i
+                    pv1 = prev_ring_start + i_next
+                    if tip_side == 0:
+                        faces.append((pv1, pv0, center_idx))
                     else:
-                        all_faces.append((prev_ring_start + i_next, prev_ring_start + i, tip_center))
+                        faces.append((pv0, pv1, center_idx))
 
     mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata(all_verts, [], all_faces)
+    mesh.from_pydata(verts, [], faces)
     mesh.update()
+
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     bpy.context.view_layer.objects.active = obj
@@ -266,12 +353,14 @@ def loft_bspline_wing(name, root_chord, tip_chord, span,
 
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=0.03)
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     sub = obj.modifiers.new("Subdiv", type='SUBSURF')
     sub.levels = 1
-    bpy.ops.object.modifier_apply(modifier=sub.name)
+    sub.render_levels = 1
+
     bpy.ops.object.shade_smooth()
     return obj
 
