@@ -1,3 +1,5 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 
 # ============================================================
@@ -7,7 +9,7 @@ from common import *
 def make_placeholder_fuselage(name):
     print("  Placeholder fuselage...")
 
-    fw_r = 4.76 * _P; fh = 6.0 * _P
+    fw_r = 4.76 * PS; fh = 6.0 * PS
     n_circ = 32
 
     fy = FUSE_LENGTH * 0.11
@@ -28,8 +30,8 @@ def make_placeholder_fuselage(name):
         half_t = yt * chord
         return z_lower, half_t
 
-    fw_blend_y = 5.0 * _P
-    st_blend_y = 4.0 * _P
+    fw_blend_y = 5.0 * PS
+    st_blend_y = 4.0 * PS
 
     y_stations = set()
     for i in range(81):
@@ -37,7 +39,7 @@ def make_placeholder_fuselage(name):
     for yc in [fy, sy]:
         for dy in [-8, -6, -5, -4, -3, -2.5, -2, -1.5, -1, -0.5, 0,
                     0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8]:
-            yv = yc + dy * _P
+            yv = yc + dy * PS
             if 0 <= yv <= FUSE_LENGTH:
                 y_stations.add(yv)
     y_stations = sorted(y_stations)
@@ -92,11 +94,11 @@ def make_placeholder_fuselage(name):
             bm.faces.new((bm.verts[i*n_circ+j], bm.verts[i*n_circ+jn],
                            bm.verts[(i+1)*n_circ+jn], bm.verts[(i+1)*n_circ+j]))
 
-    nv = bm.verts.new((0, -0.5*_P, fh/2)); bm.verts.ensure_lookup_table()
+    nv = bm.verts.new((0, -0.5*PS, fh/2)); bm.verts.ensure_lookup_table()
     for j in range(n_circ):
         bm.faces.new((nv, bm.verts[(j+1)%n_circ], bm.verts[j]))
     tb = (n_len - 1) * n_circ
-    tv = bm.verts.new((0, FUSE_LENGTH+0.5*_P, fh/2)); bm.verts.ensure_lookup_table()
+    tv = bm.verts.new((0, FUSE_LENGTH+0.5*PS, fh/2)); bm.verts.ensure_lookup_table()
     for j in range(n_circ):
         bm.faces.new((tv, bm.verts[tb+j], bm.verts[tb+(j+1)%n_circ]))
 
@@ -120,7 +122,7 @@ def make_placeholder_fuselage(name):
     cutter_faces = []
     n_prof = len(profile)
     z_bot = fh * 0.5
-    z_top = fh + 2.0 * _P
+    z_top = fh + 2.0 * PS
 
     for zi, z in enumerate([z_bot, z_top]):
         for px, pz in profile:
@@ -155,23 +157,23 @@ def make_placeholder_fuselage(name):
 
     # Screw holes
     add_screw_holes(obj,
-        [(0, fy - 2.0*_P, fh/2),
-         (0, fy + 3.0*_P, fh/2),
-         (0, fy + 8.0*_P, fh/2)],
-        SCREW_DIAM, fh + 4*_P, 'z')
+        [(0, fy - 2.0*PS, fh/2),
+         (0, fy + 3.0*PS, fh/2),
+         (0, fy + 8.0*PS, fh/2)],
+        SCREW_DIAM, fh + 4*PS, 'z')
 
     st_shift = STAB_ROOT_CHORD * 0.25
     st_half_sp = STAB_ROOT_CHORD * 0.15
     add_screw_holes(obj,
         [(0, sy - st_half_sp + st_shift, fh/2),
          (0, sy + st_half_sp + st_shift, fh/2)],
-        SCREW_DIAM, fh + 4*_P, 'z')
+        SCREW_DIAM, fh + 4*PS, 'z')
 
     mast_screw_z = fh * 0.25
-    mast_screw_depth = fh * 0.5 + 2*_P
+    mast_screw_depth = fh * 0.5 + 2*PS
     add_screw_holes(obj,
-        [(0, py_pos - 7.0*_P, mast_screw_z),
-         (0, py_pos - 1.0*_P, mast_screw_z)],
+        [(0, py_pos - 7.0*PS, mast_screw_z),
+         (0, py_pos - 1.0*PS, mast_screw_z)],
         SCREW_DIAM, mast_screw_depth, 'z')
 
     bpy.ops.object.shade_smooth()

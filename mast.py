@@ -1,3 +1,5 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 
 # ============================================================
@@ -105,11 +107,11 @@ def build_mast():
     mast = import_and_scale_mesh(MAST_FILE, SCALE, "Mast") if MAST_FILE else None
     if not mast:
         mast = make_placeholder_mast("Mast")
-        screw_z = 1.5 * _P
+        screw_z = 1.5 * PS
         add_screw_holes(mast,
-            [(-7.0*_P, 0, screw_z),
-             (-1.0*_P, 0, screw_z)],
-            SCREW_DIAM, 5.0*_P, 'z')
+            [(-7.0*PS, 0, screw_z),
+             (-1.0*PS, 0, screw_z)],
+            SCREW_DIAM, 5.0*PS, 'z')
     export_stl(mast, "2_mast.stl")
     return mast
 

@@ -1,3 +1,5 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 #!/usr/bin/env python3
 # ============================================================
 # FINGERFOIL — B-spline lofted hydrofoil parts
@@ -37,7 +39,7 @@ print(f"{'='*60}")
 print(f"""
   1_board.stl        {BOARD_LENGTH:.0f} x {BOARD_WIDTH:.0f} x {BOARD_THICK:.1f}mm {'('+BOARD_FILE+')' if BOARD_FILE else '(generated)'}
   2_mast.stl         {MAST_HEIGHT:.0f}mm tall, {MAST_CHORD:.0f}mm chord, {MAST_CHORD*0.13:.1f}mm thick, NACA {MAST_NACA} {'('+MAST_FILE+')' if MAST_FILE else '(generated)'}
-  3_fuselage.stl     {FUSE_LENGTH:.1f}mm long, {4.76*2*_P:.1f}mm wide {'('+FUSE_FILE+')' if FUSE_FILE else '(generated)'}
+  3_fuselage.stl     {FUSE_LENGTH:.1f}mm long, {4.76*2*PS:.1f}mm wide {'('+FUSE_FILE+')' if FUSE_FILE else '(generated)'}
   4_frontwing.stl    {FW_SPAN:.0f}mm span, {FW_ROOT_CHORD:.1f}mm root chord, {FW_ROOT_CHORD*0.12:.1f}mm thick, NACA {FW_NACA}
   5_stabilizer.stl   {STAB_SPAN:.0f}mm span, {STAB_ROOT_CHORD:.1f}mm root chord, {STAB_ROOT_CHORD*0.24:.1f}mm thick, NACA {STAB_NACA}
 
