@@ -129,7 +129,7 @@ STL files are written to `~/Desktop/fingerfoil/`:
 | Board | 190 × 66 × 10.2mm | 190 × 66 × 10.2mm |
 | Mast | 170mm tall, 24mm chord, NACA 0013 | 190mm tall, 24mm chord, NACA 0013 |
 | Fuselage | 123mm long, 9.5mm wide | 175mm long, 9.5mm wide |
-| Front wing | 200mm span, 25.2mm root chord, NACA 2412 | 200mm span, 25.2mm root chord, NACA 2412 |
+| Front wing | 200mm span, 25.2mm root chord, NACA 2412 | 200mm span, 25.2mm root chord, NACA 4412 |
 | Stabilizer | 45mm span, 12.6mm root chord, NACA 0024 | 95mm span, 12.6mm root chord, NACA 0024 |
 | Mast pivot on fuse | 44% of fuse length | 21.3% of fuse length |
 | Screws | M1.6 | M1.6 |
@@ -142,6 +142,7 @@ Derived from the parameter table in Yim & Gallaire, *A minimal model of pump foi
 
 - Longer fuselage and stab span to match the paper's `l_wing_tot = 0.80 m` and `b_Rw = 0.50 m` at scale.
 - Mast pivot moved forward to put the front wing close to the mast (`l_Fw / l_wing_tot = 0.1875`) and the stab on a long aft moment arm (`l_Rw / l_Fw ≈ 4.3`). This matches commercial pumpfoil layouts and is what the paper's §IV pitch-stability analysis assumes.
+- Front wing switched to NACA 4412 to more closely match the paper's empirical lift curve `C_L = 2π·α + 0.4` (zero-lift angle ≈ −3.65°). NACA 2412 (zero-lift ≈ −2°) is retained for `-original`.
 - The `-original` (symmetric) layout is preserved as default for backwards compatibility.
 
 ## Board Details

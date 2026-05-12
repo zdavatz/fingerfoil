@@ -35,7 +35,7 @@ Output goes to `~/Desktop/fingerfoil/`.
 Two geometry presets, selectable at build time:
 
 - **`-original`** (default) — Stock fingerfoil dimensions. Mast pivot at 44% of fuselage length, near-symmetric front/rear lever arms.
-- **`-epfl`** — Paper-aligned with Yim & Gallaire, *A minimal model of pump foil dynamics* (`pdf/Pumpfoil_Model.pdf`). Mast pivot at 21.3% of fuselage, longer fuse (175mm), longer mast (190mm), wider stab span (95mm). Scaled 1:5.25 from the paper's Table I to match real-pumpfoil proportions. See GitHub issue #1 for the derivation.
+- **`-epfl`** — Paper-aligned with Yim & Gallaire, *A minimal model of pump foil dynamics* (`pdf/Pumpfoil_Model.pdf`). Mast pivot at 21.3% of fuselage, longer fuse (175mm), longer mast (190mm), wider stab span (95mm), front-wing airfoil NACA 4412 (vs. 2412 in `-original`, to match the paper's lift-curve camber). Scaled 1:5.25 from the paper's Table I to match real-pumpfoil proportions. See GitHub issue #1 for the derivation.
 
 Modes are set by branching in `common.py` on the `GEOMETRY` variable. The fractions `FUSE_FW_X_FRAC`, `FUSE_STAB_X_FRAC`, `FUSE_MAST_X_FRAC` and the dimensions `MAST_HEIGHT`, `FUSE_LENGTH`, `STAB_SPAN` depend on the mode; everything else (wing chords, NACA codes, etc.) is shared.
 
