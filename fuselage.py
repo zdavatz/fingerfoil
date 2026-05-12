@@ -13,8 +13,8 @@ def make_placeholder_fuselage(name):
     n_circ = 32
 
     # Wing junction positions along fuselage length (X axis)
-    fx = FUSE_LENGTH * 0.11   # front wing X
-    sx = FUSE_LENGTH * 0.88   # stabilizer X
+    fx = FUSE_LENGTH * FUSE_FW_X_FRAC   # front wing X
+    sx = FUSE_LENGTH * FUSE_STAB_X_FRAC # stabilizer X
 
     def naca_lower_z_at(code, chord, fuse_x, x_center):
         m_v = int(code[0])/100; p_c = int(code[1])/10; t_v = int(code[2:])/100
@@ -117,7 +117,7 @@ def make_placeholder_fuselage(name):
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # NACA-shaped mast pocket
-    px_pos = FUSE_LENGTH * 0.44
+    px_pos = FUSE_LENGTH * FUSE_MAST_X_FRAC
     profile = naca_4digit(MAST_NACA, 48)
     cl = SLOT_CLEARANCE
     mast_c = MAST_CHORD + cl * 2

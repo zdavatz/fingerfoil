@@ -19,6 +19,7 @@ BOARD_FILE = None
 MAST_FILE  = None
 FUSE_FILE  = None
 COMBINED   = False
+GEOMETRY   = 'original'   # 'original' or 'epfl' (Yim & Gallaire paper-aligned)
 
 argv = sys.argv
 if '--' in argv:
@@ -36,10 +37,15 @@ if '--' in argv:
             FUSE_FILE = os.path.expanduser(custom_args[i + 1]); i += 2
         elif arg == '-combined':
             COMBINED = True; i += 1
+        elif arg == '-original':
+            GEOMETRY = 'original'; i += 1
+        elif arg == '-epfl':
+            GEOMETRY = 'epfl'; i += 1
         else:
             i += 1
 
 print(f"  PIECE_SCALE = {PIECE_SCALE}")
+print(f"  GEOMETRY    = {GEOMETRY}")
 if BOARD_FILE: print(f"  Board file:  {BOARD_FILE}")
 if MAST_FILE:  print(f"  Mast file:   {MAST_FILE}")
 if FUSE_FILE:  print(f"  Fuse file:   {FUSE_FILE}")
@@ -47,8 +53,24 @@ if FUSE_FILE:  print(f"  Fuse file:   {FUSE_FILE}")
 # ── Base dimensions (mm) ──
 PS = PIECE_SCALE
 BOARD_LENGTH = 190.0*PS;  BOARD_WIDTH = 66.0*PS;  BOARD_THICK = 10.2*PS
-MAST_HEIGHT  = 170.0*PS;  MAST_CHORD  = 24.0*PS;  MAST_NACA = '0013'
-FUSE_LENGTH  = 123.0*PS
+MAST_CHORD   = 24.0*PS;   MAST_NACA   = '0013'
+
+# Geometry-dependent dimensions: stock fingerfoil vs. Yim & Gallaire (EPFL) paper-aligned.
+# EPFL values derived in pdf/Pumpfoil_Model.pdf Table I at 1:5.25 scale.
+if GEOMETRY == 'epfl':
+    MAST_HEIGHT      = 190.0*PS
+    FUSE_LENGTH      = 175.0*PS
+    STAB_SPAN        = 95.0*PS
+    FUSE_FW_X_FRAC   = 0.05
+    FUSE_STAB_X_FRAC = 0.92
+    FUSE_MAST_X_FRAC = 0.213
+else:
+    MAST_HEIGHT      = 170.0*PS
+    FUSE_LENGTH      = 123.0*PS
+    STAB_SPAN        = 45.0*PS
+    FUSE_FW_X_FRAC   = 0.11
+    FUSE_STAB_X_FRAC = 0.88
+    FUSE_MAST_X_FRAC = 0.44
 
 MAST_PLATE_THICK = 2.0*PS;  MAST_PLATE_LENGTH = 18.0*PS;  MAST_PLATE_HEIGHT = 10.0*PS
 FW_TAB_THICKNESS = 2.5*PS;  FW_TAB_LENGTH = 14.0*PS
@@ -58,7 +80,7 @@ FW_SPAN = 200.0*PS;  FW_ROOT_CHORD = 25.2*PS;  FW_TIP_CHORD = 12.6*PS
 FW_SWEEP = 10.0*PS;  FW_DIHEDRAL = 3.0;        FW_NACA = '2412'
 FW_TWIST = -2.0
 
-STAB_SPAN = 45.0*PS;  STAB_ROOT_CHORD = 12.6*PS;  STAB_TIP_CHORD = 7.0*PS
+STAB_ROOT_CHORD = 12.6*PS;  STAB_TIP_CHORD = 7.0*PS
 STAB_SWEEP = 2.5*PS;  STAB_NACA = '0024'
 
 SLOT_CLEARANCE = 0.3*PS;  SCREW_DIAM = 1.6*PS;  FOIL_PTS = 80

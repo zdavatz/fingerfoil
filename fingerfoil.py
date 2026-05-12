@@ -13,9 +13,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 #   -mast      PATH    Mast mesh (.stl or .step)
 #   -fuse      PATH    Fuselage mesh (.stp or .step)
 #   -combined          Also export all pieces assembled as 0_combined.stl
+#   -original          Use stock fingerfoil geometry (default)
+#   -epfl              Use Yim & Gallaire paper-aligned geometry (pdf/Pumpfoil_Model.pdf)
 #
 # Example:
-#   blender -b -P fingerfoil.py -- -size 0.5 -combined
+#   blender -b -P fingerfoil.py -- -size 0.5 -combined -epfl
 
 from common import *
 from board import build_board
@@ -48,18 +50,18 @@ if COMBINED:
     # Fuselage: hangs below mast, at bottom of mast
     fuse_fh = 6.0 * PS  # fuselage height
 
-    # Front wing: on fuselage at 11% of fuse length
-    fw_fy = FUSE_LENGTH * 0.11
+    # Front wing: on fuselage at FUSE_FW_X_FRAC of fuse length
+    fw_fy = FUSE_LENGTH * FUSE_FW_X_FRAC
 
-    # Stabilizer: on fuselage at 88% of fuse length
-    stab_sy = FUSE_LENGTH * 0.88
+    # Stabilizer: on fuselage at FUSE_STAB_X_FRAC of fuse length
+    stab_sy = FUSE_LENGTH * FUSE_STAB_X_FRAC
 
     positions = {
         "1_board.stl":      (0, 0, 0),
         "2_mast.stl":       (mast_board_x, 0, -BOARD_THICK/2 - MAST_HEIGHT),
-        "3_fuselage.stl":   (mast_board_x - FUSE_LENGTH * 0.44, 0, -BOARD_THICK/2 - MAST_HEIGHT),
-        "4_frontwing.stl":  (mast_board_x - FUSE_LENGTH * 0.44 + fw_fy, 0, -BOARD_THICK/2 - MAST_HEIGHT + fuse_fh),
-        "5_stabilizer.stl": (mast_board_x - FUSE_LENGTH * 0.44 + stab_sy, 0, -BOARD_THICK/2 - MAST_HEIGHT + fuse_fh),
+        "3_fuselage.stl":   (mast_board_x - FUSE_LENGTH * FUSE_MAST_X_FRAC, 0, -BOARD_THICK/2 - MAST_HEIGHT),
+        "4_frontwing.stl":  (mast_board_x - FUSE_LENGTH * FUSE_MAST_X_FRAC + fw_fy, 0, -BOARD_THICK/2 - MAST_HEIGHT + fuse_fh),
+        "5_stabilizer.stl": (mast_board_x - FUSE_LENGTH * FUSE_MAST_X_FRAC + stab_sy, 0, -BOARD_THICK/2 - MAST_HEIGHT + fuse_fh),
     }
 
     for stl_name in stl_files:
